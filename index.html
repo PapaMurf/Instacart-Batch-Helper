@@ -387,7 +387,7 @@
         </div>
 
         <div class="field">
-          <label for="mileage">Miles</label>
+          <label for="mileage">Miles (one-way)</label>
           <input
             id="mileage"
             type="number"
@@ -451,17 +451,28 @@
         <div id="settingsBody" class="settings-body">
           <div class="settings-grid">
             <div class="field">
-              <label for="gasCost">Gas cost per mile</label>
+              <label for="gasPrice">Gas price (per gallon)</label>
               <div class="inline-prefix">
                 <span>$</span>
                 <input
-                  id="gasCost"
+                  id="gasPrice"
                   type="number"
                   inputmode="decimal"
                   step="0.01"
-                  placeholder="0.20"
+                  placeholder="3.50"
                 />
               </div>
+            </div>
+
+            <div class="field">
+              <label for="mpg">Car MPG</label>
+              <input
+                id="mpg"
+                type="number"
+                inputmode="decimal"
+                step="0.1"
+                placeholder="25"
+              />
             </div>
 
             <div class="field">
@@ -501,7 +512,7 @@
             </div>
 
             <div class="field">
-              <label for="minutesPerMile">Minutes per mile</label>
+              <label for="minutesPerMile">Minutes per mile (one-way)</label>
               <input
                 id="minutesPerMile"
                 type="number"
@@ -513,32 +524,37 @@
           </div>
 
           <div class="settings-note">
-            Settings are saved on this device using local storage. Adjust until
-            it matches your real-world pace.
+            • Time uses <strong>one-way miles</strong> only.<br />
+            • Fuel cost uses a <strong>round trip (2× miles)</strong> with
+            gas price &amp; MPG to approximate real fuel spend.<br />
+            Settings are saved on this device using local storage.
           </div>
         </div>
-        <div class="tiny">v1 • All calculations are estimates only.</div>
+        <div class="tiny">v2 • All calculations are estimates only.</div>
       </div>
     </div>
   </div>
 
   <script>
     (function () {
+      // v2 settings include gas price + MPG
       const DEFAULT_SETTINGS = {
-        gasCost: 0.2,
+        gasPrice: 3.5,       // $ per gallon
+        mpg: 25,             // miles per gallon
         targetHourly: 25,
         baseMinutes: 15,
         minutesPerItem: 1,
         minutesPerMile: 2,
       };
 
-      const SETTINGS_KEY = "batchCalcSettings_v1";
+      const SETTINGS_KEY = "batchCalcSettings_v2";
 
       const batchPayInput = document.getElementById("batchPay");
       const mileageInput = document.getElementById("mileage");
       const itemsInput = document.getElementById("items");
 
-      const gasCostInput = document.getElementById("gasCost");
+      const gasPriceInput = document.getElementById("gasPrice");
+      const mpgInput = document.getElementById("mpg");
       const targetHourlyInput = document.getElementById("targetHourly");
       const baseMinutesInput = document.getElementById("baseMinutes");
       const minutesPerItemInput = document.getElementById("minutesPerItem");
@@ -574,16 +590,22 @@
       }
 
       function applySettings(s) {
-        gasCostInput.value = s.gasCost;
+        gasPriceInput.value = s.gasPrice;
+        mpgInput.value = s.mpg;
         targetHourlyInput.value = s.targetHourly;
         baseMinutesInput.value = s.baseMinutes;
         minutesPerItemInput.value = s.minutesPerItem;
         minutesPerMileInput.value = s.minutesPerMile;
       }
 
+      function saveSettings(s) {
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+      }
+
       function saveSettingsFromInputs() {
         const s = {
-          gasCost: parseFloat(gasCostInput.value) || DEFAULT_SETTINGS.gasCost,
+          gasPrice: parseFloat(gasPriceInput.value) || DEFAULT_SETTINGS.gasPrice,
+          mpg: parseFloat(mpgInput.value) || DEFAULT_SETTINGS.mpg,
           targetHourly:
             parseFloat(targetHourlyInput.value) || DEFAULT_SETTINGS.targetHourly,
           baseMinutes:
@@ -595,7 +617,7 @@
             parseFloat(minutesPerMileInput.value) ||
             DEFAULT_SETTINGS.minutesPerMile,
         };
-        localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+        saveSettings(s);
         return s;
       }
 
@@ -616,19 +638,21 @@
 
         if (isNaN(batchPay) || isNaN(mileage) || isNaN(items)) {
           errorMsg.textContent =
-            "Enter batch pay, miles, and item count to calculate.";
+            "Enter batch pay, one-way miles, and item count to calculate.";
           errorMsg.style.display = "block";
           summaryCard.style.display = "none";
           return;
         }
 
         const settings = saveSettingsFromInputs();
-        const gasPerMile = settings.gasCost;
+        const gasPrice = settings.gasPrice;
+        const mpg = settings.mpg;
         const targetHr = settings.targetHourly;
         const baseMin = settings.baseMinutes;
         const minPerItem = settings.minutesPerItem;
         const minPerMile = settings.minutesPerMile;
 
+        // Time uses one-way miles
         const estMinutes =
           baseMin + minPerItem * items + minPerMile * mileage;
 
@@ -640,9 +664,13 @@
           return;
         }
 
-        const fuelCost = mileage * gasPerMile;
-        const net = batchPay - fuelCost;
+        // Fuel cost uses round-trip distance (2x one-way mileage)
+        const effectiveMpg = mpg > 0 ? mpg : DEFAULT_SETTINGS.mpg;
+        const gasCostPerMile = gasPrice / effectiveMpg;
+        const roundTripMiles = mileage * 2;
+        const fuelCost = roundTripMiles * gasCostPerMile;
 
+        const net = batchPay - fuelCost;
         const hours = estMinutes / 60;
         const earningsPerHour = net / hours;
         const earningsPerMile =
@@ -697,7 +725,8 @@
         toggleSettingsBtn.textContent = open ? "Hide" : "Show";
       }
 
-      gasCostInput.addEventListener("change", saveSettingsFromInputs);
+      gasPriceInput.addEventListener("change", saveSettingsFromInputs);
+      mpgInput.addEventListener("change", saveSettingsFromInputs);
       targetHourlyInput.addEventListener("change", saveSettingsFromInputs);
       baseMinutesInput.addEventListener("change", saveSettingsFromInputs);
       minutesPerItemInput.addEventListener("change", saveSettingsFromInputs);
